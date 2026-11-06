@@ -85,7 +85,7 @@ function redirect(location: string, ...cookies: string[]): Response {
 }
 
 function loginError(code: string, next = "/"): Response {
-  return redirect(`/login?error=${code}&next=${encodeURIComponent(next)}`, cookie(OAUTH_COOKIE, "", 0));
+  return redirect(`/login.html?error=${code}&next=${encodeURIComponent(next)}`, cookie(OAUTH_COOKIE, "", 0));
 }
 
 // ─── sessions ──────────────────────────────────────────────────────────────
@@ -206,19 +206,37 @@ async function googleCallback(url: URL, context: Context, secret: string, google
   return redirect(next, cookie(COOKIE, token, SESSION_DAYS * 86400), cookie(OAUTH_COOKIE, "", 0, "/auth/"));
 }
 
-// Serves login.html, removing the Google button when Google isn't configured.
-async function serveLoginPage(request: Request, context: Context, googleEnabled: boolean): Promise<Response | URL> {
-  if (googleEnabled) return new URL("/login.html", request.url);
-  const res = await context.next();
-  const html = (await res.text()).replace(/<!--google-start-->[\s\S]*?<!--google-end-->/, "");
+// Serves login.html (path must already be /login.html), removing the Google button
+// when Google isn't configured. Never rewrites, so it can't loop back into this function.
+async function serveLoginPage(context: Context, googleEnabled: boolean): Promise<Response> {
+  const res = await context.next({ sendConditionalRequest: false });
   const headers = new Headers(res.headers);
+  headers.set("Cache-Control", "no-store");
+  headers.delete("etag");
+  if (googleEnabled || res.status !== 200) {
+    return new Response(res.body, { status: res.status, headers });
+  }
+  const html = (await res.text()).replace(/<!--google-start-->[\s\S]*?<!--google-end-->/, "");
   headers.delete("content-length");
-  return new Response(html, { status: res.status, headers });
+  headers.delete("content-encoding");
+  return new Response(html, { status: 200, headers });
 }
 
 // ─── handler ───────────────────────────────────────────────────────────────
 
 export default async function handler(request: Request, context: Context) {
+  try {
+    return await handle(request, context);
+  } catch (err) {
+    console.error("auth edge function error", err);
+    return new Response("Something went wrong signing you in. Please try again in a moment.", {
+      status: 500,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  }
+}
+
+async function handle(request: Request, context: Context): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
 
@@ -242,7 +260,7 @@ export default async function handler(request: Request, context: Context) {
 
   // Log out
   if (path === "/logout") {
-    return redirect("/login", cookie(COOKIE, "", 0));
+    return redirect("/login.html", cookie(COOKIE, "", 0));
   }
 
   // Google sign-in
@@ -264,7 +282,7 @@ export default async function handler(request: Request, context: Context) {
     const passOk = await safeEqual(pass, password, secret);
     if (!(userOk && passOk)) {
       await new Promise((r) => setTimeout(r, 600)); // slow down guessing
-      return redirect(`/login?error=1&next=${encodeURIComponent(next)}`);
+      return redirect(`/login.html?error=1&next=${encodeURIComponent(next)}`);
     }
 
     return redirect(next, cookie(COOKIE, await makeToken(secret, "pw"), SESSION_DAYS * 86400));
@@ -274,14 +292,15 @@ export default async function handler(request: Request, context: Context) {
   if (PUBLIC_PATHS.has(path)) {
     if (path === "/login" || path === "/login.html") {
       if (authed) return redirect(safeNext(url.searchParams.get("next")));
-      return serveLoginPage(request, context, google !== null);
+      if (path === "/login") return redirect(`/login.html${url.search}`);
+      return serveLoginPage(context, google !== null);
     }
     return context.next();
   }
 
   // Everything else requires a valid session
   if (!authed) {
-    return redirect(`/login?next=${encodeURIComponent(path + url.search)}`);
+    return redirect(`/login.html?next=${encodeURIComponent(path + url.search)}`);
   }
 
   const response = await context.next();
