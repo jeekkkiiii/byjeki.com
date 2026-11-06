@@ -21,3 +21,19 @@ Set these in **Netlify → Site configuration → Environment variables**, then 
 
 Sessions last 7 days. Visit `/logout` (or the LOGOUT link in the nav) to sign out.
 Until `SITE_USERNAME` and `SITE_PASSWORD` are set, the site returns a "not configured" message instead of the content.
+
+## Google sign-in
+"Continue with Google" appears on the login page once these are set in Netlify (then redeploy):
+
+| Variable | Secret? | Purpose |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | no | OAuth client ID from Google Cloud Console |
+| `GOOGLE_CLIENT_SECRET` | yes | OAuth client secret |
+| `ALLOWED_EMAILS` | no | Who may get in with Google, comma separated. `@company.com` allows a whole domain, `*` allows anyone. Unset = nobody. |
+
+Google Cloud setup: create an **OAuth client ID** (type *Web application*) with
+- Authorised JavaScript origin: `https://byjeki.com`
+- Authorised redirect URI: `https://byjeki.com/auth/google/callback`
+
+(Add the same pair for any other domain you log in through, e.g. `https://<site>.netlify.app`.)
+Removing an email from `ALLOWED_EMAILS` revokes that person's access on their next page load.
