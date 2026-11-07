@@ -7,7 +7,7 @@
 //   AI_MODEL           – optional; defaults to gemini-flash-lite-latest (Gemini) / openai/gpt-oss-120b (Groq)
 //   AI_BASE_URL        – optional; only for other OpenAI-compatible providers
 //   AI_DAILY_TOKENS    – optional; daily token budget shown in the HP bar (default 500000).
-//   AI_DAILY_REQUESTS  – optional; daily request budget shown next to it (default 250).
+//   AI_DAILY_REQUESTS  – optional; daily request budget shown next to it (default 500).
 //                        Set it to your model's "requests per day" from AI Studio → Rate limits.
 //                        Both reset at midnight Pacific time, like Google's free-tier limits.
 //   CHAT_SYSTEM_PROMPT – optional; instructions/personality for the assistant
@@ -42,7 +42,7 @@ const DEFAULT_SYSTEM_PROMPT =
   "Answer clearly and concisely. Use Markdown for formatting, including fenced code blocks for code.";
 
 const DEFAULT_DAILY_TOKENS = 500_000;
-const DEFAULT_DAILY_REQUESTS = 250;
+const DEFAULT_DAILY_REQUESTS = 500;
 
 const enc = new TextEncoder();
 
