@@ -2,14 +2,14 @@
 my website that has my cv and other tools that i want to showcase and use
 
 ## Deployment (Netlify)
-This is a static site with no build step. `netlify.toml` tells Netlify to publish the repo root.
+This is a static site with no build step. The pages live in `public/`, and `netlify.toml` tells Netlify to publish only that folder.
 
 1. In Netlify: **Add new site → Import an existing project → GitHub** and pick `jeekkkiiii/byjeki.com`.
-2. Branch to deploy: `main`. Build command: *(leave empty)*. Publish directory: `.`
+2. Branch to deploy: `main`. Build command: *(leave empty)*. Publish directory: `public`
 3. Every push to `main` redeploys the site automatically.
 
 ## Login
-The whole site sits behind a login page (`login.html`), enforced server-side by a Netlify Edge Function (`netlify/edge-functions/auth.ts`).
+The whole site sits behind a login page (`public/login.html`), enforced server-side by a Netlify Edge Function (`netlify/edge-functions/auth.ts`).
 
 Set these in **Netlify → Site configuration → Environment variables**, then redeploy:
 
@@ -39,7 +39,7 @@ Google Cloud setup: create an **OAuth client ID** (type *Web application*) with
 Removing an email from `ALLOWED_EMAILS` revokes that person's access on their next page load.
 
 ## AI Chat
-`chat.html` (the **AI CHAT** link in the nav) is a chat page behind the login. The browser talks to
+`public/chat.html` (the **AI CHAT** link in the nav) is a chat page behind the login. The browser talks to
 `/api/chat` (`netlify/edge-functions/chat.ts`), which forwards the conversation to an AI provider
 (Gemini or Groq), so the API key never reaches the browser. Until it's configured the page shows "NOT CONNECTED".
 

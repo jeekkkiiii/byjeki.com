@@ -1,8 +1,14 @@
 # Netlify configuration for byjeki.com
-# Static site: no build step, serve files from the repo root.
+# Static site: no build step. Only the public/ folder is published, so repo files
+# (edge function code, package files, build caches) are never served.
 [build]
-  publish = "."
+  publish = "public"
   command = ""
+
+# Netlify's own tooling caches (e.g. Deno's copy of @types/node) are not our code;
+# skip them when scanning for leaked secrets.
+[build.environment]
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/**,node_modules/**"
 
 # Edge functions run in the order listed here: "auth" must come first so every
 # page and API (including the AI chat) is behind the login.
