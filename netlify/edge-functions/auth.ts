@@ -15,7 +15,7 @@
 //                             An entry starting with "@" allows a whole domain; "*" allows anyone.
 //                             If unset, nobody can get in with Google.
 
-import type { Config, Context } from "@netlify/edge-functions";
+import type { Context } from "@netlify/edge-functions";
 
 const COOKIE = "byjeki_session";
 const OAUTH_COOKIE = "byjeki_oauth";
@@ -304,10 +304,9 @@ async function handle(request: Request, context: Context): Promise<Response> {
   }
 
   const response = await context.next();
-  response.headers.set("Cache-Control", "private, no-store");
-  return response;
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "private, no-store");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-export const config: Config = {
-  path: "/*",
-};
+// Route is declared in netlify.toml so it always runs before the other edge functions.

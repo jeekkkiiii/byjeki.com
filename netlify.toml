@@ -4,6 +4,16 @@
   publish = "."
   command = ""
 
+# Edge functions run in the order listed here: "auth" must come first so every
+# page and API (including the AI chat) is behind the login.
+[[edge_functions]]
+  function = "auth"
+  path = "/*"
+
+[[edge_functions]]
+  function = "chat"
+  path = "/api/chat"
+
 [[headers]]
   for = "/*"
   [headers.values]

@@ -37,3 +37,25 @@ Google Cloud setup: create an **OAuth client ID** (type *Web application*) with
 
 (Add the same pair for any other domain you log in through, e.g. `https://<site>.netlify.app`.)
 Removing an email from `ALLOWED_EMAILS` revokes that person's access on their next page load.
+
+## AI Chat
+`chat.html` (the **AI CHAT** link in the nav) is a chat page behind the login. The browser talks to
+`/api/chat` (`netlify/edge-functions/chat.ts`), which forwards the conversation to an Ollama server,
+so API keys never reach the browser. Until it's configured the page shows "NOT CONNECTED".
+
+| Variable | Secret? | Purpose |
+|---|---|---|
+| `OLLAMA_API_KEY` | yes | API key from ollama.com (needed for Ollama Cloud) |
+| `OLLAMA_MODEL` | no | Model to use, e.g. `gpt-oss:120b` (default) or `gpt-oss:20b` |
+| `OLLAMA_HOST` | no | Optional. Defaults to `https://ollama.com`. Set to your own Ollama server's public URL to self-host |
+| `CHAT_SYSTEM_PROMPT` | no | Optional. Personality/instructions for the assistant |
+
+### Option 1 – Ollama Cloud (recommended)
+1. Sign up at ollama.com → **Settings → API keys** → create a key.
+2. Add `OLLAMA_API_KEY` (secret) and `OLLAMA_MODEL` in Netlify, then redeploy.
+
+### Option 2 – Ollama on your own computer (advanced)
+Netlify can't reach `localhost`, so your PC must be exposed with a tunnel (e.g. Cloudflare Tunnel),
+then set `OLLAMA_HOST` to the tunnel URL and `OLLAMA_MODEL` to a model you've pulled.
+⚠️ A bare tunnel lets anyone who finds the URL use your Ollama; protect it (e.g. Cloudflare Access)
+and note your PC must stay on for the chat to work.
