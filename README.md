@@ -52,6 +52,8 @@ The provider is detected automatically: a Google key (`AIza…` or `AQ.…`) or 
 | `AI_MODEL` | no | Optional. Defaults: Gemini `gemini-flash-lite-latest`, Groq `openai/gpt-oss-120b` |
 | `AI_BASE_URL` | no | Optional. Only needed for other OpenAI-compatible providers (e.g. `https://openrouter.ai/api/v1`) |
 | `CHAT_SYSTEM_PROMPT` | no | Optional. Personality/instructions for the assistant |
+| `AI_DAILY_TOKENS` | no | Optional. Daily token budget shown in the HP bar above the chat input (default `500000`). The chat pauses when it runs out and refills at midnight Pacific time (08:00 UK) |
 
+Token usage is stored in Netlify Blobs (built in, no setup needed; `@netlify/blobs` in `package.json` is installed by Netlify automatically).
 If a model name is wrong or retired, the chat error lists models that are available.
 After adding or changing variables, redeploy (**Deploys → Trigger deploy → Deploy site**).

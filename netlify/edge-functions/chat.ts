@@ -1,25 +1,27 @@
-// AI chat backend: forwards the conversation to Groq (or any OpenAI-compatible API)
-// and streams the reply back to the browser.
+// AI chat backend: forwards the conversation to Gemini or Groq (any OpenAI-compatible API)
+// and streams the reply back to the browser. Also keeps a daily token budget (the "HP bar").
 // Runs after the "auth" edge function (see netlify.toml), so only logged-in visitors reach it.
 //
 // Environment variables (Netlify → Site configuration → Environment variables):
-//   GROQ_API_KEY       – required; free key from console.groq.com → API Keys
-//   AI_MODEL           – optional; defaults to openai/gpt-oss-120b
-//   AI_BASE_URL        – optional; defaults to https://api.groq.com/openai/v1
-//                        (point at another OpenAI-compatible provider to switch, e.g.
-//                        https://openrouter.ai/api/v1 or
-//                        https://generativelanguage.googleapis.com/v1beta/openai)
+//   AI_API_KEY         – Gemini key (AIza… / AQ.…) or Groq key. GROQ_API_KEY also accepted.
+//   AI_MODEL           – optional; defaults to gemini-flash-lite-latest (Gemini) / openai/gpt-oss-120b (Groq)
+//   AI_BASE_URL        – optional; only for other OpenAI-compatible providers
+//   AI_DAILY_TOKENS    – optional; daily token budget shown in the HP bar (default 500000).
+//                        Resets at midnight Pacific time, like Google's free-tier limits.
 //   CHAT_SYSTEM_PROMPT – optional; instructions/personality for the assistant
 //
-// GET  /api/chat → { configured, model }   (used by the page to show status)
+// GET  /api/chat → { configured, provider, model, usage }
 // POST /api/chat → body { messages: [{ role: "user" | "assistant", content: string }] }
 //                  streams newline-delimited JSON lines to the browser:
 //                    {"message":{"content":"..."}}   – a piece of the reply
 //                    {"message":{"thinking":"..."}}  – the model is reasoning
 //                    {"error":"..."}                 – something went wrong mid-reply
+//                    {"usage":{...}}                 – updated token budget
 //                    {"done":true}                   – finished
+//   usage = { used, limit, resetsAt } or null if usage tracking is unavailable
 
 import type { Context } from "@netlify/edge-functions";
+import { getStore } from "@netlify/blobs";
 
 const MAX_MESSAGES = 40;
 const MAX_CHARS_PER_MESSAGE = 8000;
@@ -36,6 +38,8 @@ const PROVIDERS = {
 const DEFAULT_SYSTEM_PROMPT =
   "You are a helpful, friendly AI assistant on Jeki's personal portfolio website (byjeki.com). " +
   "Answer clearly and concisely. Use Markdown for formatting, including fenced code blocks for code.";
+
+const DEFAULT_DAILY_TOKENS = 500_000;
 
 const enc = new TextEncoder();
 
@@ -121,10 +125,75 @@ function friendlyError(status: number, model: string, provider: string): string 
   return "The AI service returned an error.";
 }
 
+// ─── daily token budget (stored in Netlify Blobs) ──────────────────────────
+
+type Usage = { used: number; limit: number; resetsAt: string };
+
+function dailyLimit(): number {
+  const n = Number(env("AI_DAILY_TOKENS")?.replace(/[,_\s]/g, ""));
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DAILY_TOKENS;
+}
+
+// Google's free-tier daily limits reset at midnight Pacific time, so the budget does too.
+function pacificDay(now = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+    }).formatToParts(now).map((p) => [p.type, p.value]),
+  );
+  const secondsIntoDay = Number(parts.hour) * 3600 + Number(parts.minute) * 60 + Number(parts.second);
+  return {
+    key: `${parts.year}-${parts.month}-${parts.day}`,
+    resetsAt: new Date(now.getTime() + (86400 - secondsIntoDay) * 1000).toISOString(),
+  };
+}
+
+function usageStore() {
+  try {
+    return getStore({ name: "ai-usage", consistency: "strong" });
+  } catch {
+    return getStore("ai-usage");
+  }
+}
+
+async function readUsage(): Promise<Usage | null> {
+  try {
+    const day = pacificDay();
+    const data = (await usageStore().get(day.key, { type: "json" })) as { tokens?: number } | null;
+    return { used: data?.tokens ?? 0, limit: dailyLimit(), resetsAt: day.resetsAt };
+  } catch (err) {
+    console.error("usage read failed", err);
+    return null;
+  }
+}
+
+async function addUsage(tokens: number): Promise<Usage | null> {
+  try {
+    const day = pacificDay();
+    const store = usageStore();
+    const data = ((await store.get(day.key, { type: "json" })) ?? {}) as { tokens?: number; requests?: number };
+    const next = { tokens: (data.tokens ?? 0) + tokens, requests: (data.requests ?? 0) + 1 };
+    await store.setJSON(day.key, next);
+    return { used: next.tokens, limit: dailyLimit(), resetsAt: day.resetsAt };
+  } catch (err) {
+    console.error("usage write failed", err);
+    return null;
+  }
+}
+
 // Converts an OpenAI-style Server-Sent Events stream into the NDJSON lines the page reads.
-function sseToNdjson(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+// When the stream ends, onFinish is given the token count the provider reported (or null)
+// plus how many characters were generated, and returns the updated budget.
+function sseToNdjson(
+  body: ReadableStream<Uint8Array>,
+  onFinish: (reportedTokens: number | null, outputChars: number) => Promise<Usage | null>,
+): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   let buffer = "";
+  let reportedTokens: number | null = null;
+  let outputChars = 0;
   const line = (obj: unknown) => enc.encode(JSON.stringify(obj) + "\n");
 
   function handleEvent(data: string, out: TransformStreamDefaultController<Uint8Array>) {
@@ -139,9 +208,17 @@ function sseToNdjson(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Arra
       out.enqueue(line({ error: evt.error.message ?? "The AI service returned an error." }));
       return;
     }
+    const usage = evt.usage ?? evt.x_groq?.usage;
+    if (usage && Number.isFinite(usage.total_tokens)) reportedTokens = usage.total_tokens;
     const delta = evt.choices?.[0]?.delta ?? {};
-    if (delta.reasoning) out.enqueue(line({ message: { thinking: delta.reasoning } }));
-    if (delta.content) out.enqueue(line({ message: { content: delta.content } }));
+    if (delta.reasoning) {
+      outputChars += String(delta.reasoning).length;
+      out.enqueue(line({ message: { thinking: delta.reasoning } }));
+    }
+    if (delta.content) {
+      outputChars += String(delta.content).length;
+      out.enqueue(line({ message: { content: delta.content } }));
+    }
   }
 
   return body.pipeThrough(
@@ -152,8 +229,9 @@ function sseToNdjson(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Arra
         buffer = lines.pop() ?? "";
         for (const l of lines) if (l.startsWith("data:")) handleEvent(l.slice(5).trim(), out);
       },
-      flush(out) {
+      async flush(out) {
         if (buffer.startsWith("data:")) handleEvent(buffer.slice(5).trim(), out);
+        out.enqueue(line({ usage: await onFinish(reportedTokens, outputChars) }));
         out.enqueue(line({ done: true }));
       },
     }),
@@ -168,6 +246,7 @@ export default async function handler(request: Request, _context: Context) {
       configured: s.configured,
       provider: s.configured ? s.providerName : null,
       model: s.configured ? s.model.replace(/^.*\//, "") : null,
+      usage: s.configured ? await readUsage() : null,
     });
   }
   if (request.method !== "POST") {
@@ -181,18 +260,40 @@ export default async function handler(request: Request, _context: Context) {
   const messages = cleanMessages(body?.messages);
   if (!messages) return json({ error: "bad_request", message: "Invalid conversation." }, 400);
 
-  let upstream: Response;
-  try {
-    upstream = await fetch(`${s.baseUrl}/chat/completions`, {
+  const before = await readUsage();
+  if (before && before.used >= before.limit) {
+    const time = new Date(before.resetsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
+    return json({
+      error: "budget",
+      message: `Out of HP! Today's AI token budget is used up. It refills at ${time} (UK time).`,
+      usage: before,
+    }, 429);
+  }
+  const systemPrompt = env("CHAT_SYSTEM_PROMPT") ?? DEFAULT_SYSTEM_PROMPT;
+  const inputChars = systemPrompt.length + messages.reduce((n, m) => n + m.content.length, 0);
+
+  const callAI = (withUsage: boolean) =>
+    fetch(`${s.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.apiKey}` },
       body: JSON.stringify({
         model: s.model,
         stream: true,
-        messages: [{ role: "system", content: env("CHAT_SYSTEM_PROMPT") ?? DEFAULT_SYSTEM_PROMPT }, ...messages],
+        ...(withUsage ? { stream_options: { include_usage: true } } : {}),
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
       }),
       signal: request.signal,
     });
+
+  let upstream: Response;
+  try {
+    upstream = await callAI(true);
+    // Some providers reject stream_options; retry once without it (usage is then estimated).
+    if (upstream.status === 400) {
+      const detail = await upstream.text().catch(() => "");
+      if (/stream_options|include_usage/i.test(detail)) upstream = await callAI(false);
+      else upstream = new Response(detail, { status: 400 });
+    }
   } catch (err) {
     console.error("AI service unreachable", err);
     return json({ error: "upstream_unreachable", message: "Couldn't reach the AI service." }, 502);
@@ -211,7 +312,11 @@ export default async function handler(request: Request, _context: Context) {
     return json({ error: "upstream", status: upstream.status, message }, 502);
   }
 
-  return new Response(sseToNdjson(upstream.body), {
+  // If the provider doesn't report usage, estimate ~4 characters per token.
+  const onFinish = (reported: number | null, outputChars: number) =>
+    addUsage(reported ?? Math.ceil((inputChars + outputChars) / 4));
+
+  return new Response(sseToNdjson(upstream.body, onFinish), {
     status: 200,
     headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",

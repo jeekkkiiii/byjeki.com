@@ -1,0 +1,8 @@
+{
+  "name": "byjeki-com",
+  "private": true,
+  "description": "byjeki.com static site with Netlify Edge Functions",
+  "dependencies": {
+    "@netlify/blobs": "11.1.6"
+  }
+}
