@@ -316,32 +316,90 @@
 
   .suggestion:hover { border-color: var(--green); color: var(--green); background: var(--green-muted); }
 
-  .msg { display: flex; flex-direction: column; gap: 6px; animation: fadeUp 0.3s ease both; max-width: 100%; }
-  .msg-label { font-size: 11px; letter-spacing: 0.14em; color: var(--text-muted); }
-  .msg.user .msg-label { color: var(--amber); }
-  .msg.assistant .msg-label { color: var(--green); }
+  /* ─── CHAT BUBBLES: you on the right, AI on the left ─── */
+  .msg {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-width: 100%;
+    animation: fadeUp 0.3s ease both;
+  }
+
+  .msg.user { align-items: flex-end; }
+  .msg.assistant { align-items: flex-start; }
+
+  .msg-label { font-size: 10px; letter-spacing: 0.16em; color: var(--text-muted); padding: 0 6px; }
+  .msg.user .msg-label { color: var(--green-dim); }
+  .msg.assistant .msg-label { color: var(--text-dim); }
 
   .msg-body {
+    position: relative;
+    min-width: 0;
+    max-width: min(78%, 680px);
+    padding: 10px 14px;
     font-family: var(--body);
     font-size: 15px;
-    line-height: 1.7;
+    line-height: 1.65;
     color: var(--text);
     overflow-wrap: anywhere;
+    border: 1px solid var(--green-border);
+  }
+
+  /* little speech-bubble tails: a solid point on the bottom corner nearest the speaker */
+  .msg-body::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    width: 9px;
+    height: 9px;
   }
 
   .msg.user .msg-body {
     font-family: var(--mono);
     font-size: 14px;
-    background: var(--bg-panel);
-    border: 1px solid var(--green-border);
-    border-left: 2px solid var(--amber);
-    padding: 10px 14px;
     white-space: pre-wrap;
+    color: #e4ffef;
+    background: rgba(0,255,136,0.13);
+    border-color: rgba(0,255,136,0.45);
+    border-radius: 12px 12px 2px 12px;
+    box-shadow: 0 0 18px rgba(0,255,136,0.08);
   }
 
-  .msg.assistant .msg-body { border-left: 2px solid var(--green-border); padding-left: 14px; }
-  .msg.error .msg-body { color: var(--red); border-left-color: var(--red); font-family: var(--mono); font-size: 13px; }
+  .msg.user .msg-body::after {
+    right: -8px;
+    background: rgba(0,255,136,0.45);
+    clip-path: polygon(0 0, 0 100%, 100% 100%);
+  }
+
+  .msg.assistant .msg-body {
+    background: var(--bg-panel);
+    border-radius: 12px 12px 12px 2px;
+    max-width: min(86%, 760px);
+  }
+
+  .msg.assistant .msg-body::after {
+    left: -8px;
+    background: rgba(0,255,136,0.3);
+    clip-path: polygon(100% 0, 0 100%, 100% 100%);
+  }
+
+  /* bubbles holding code or long answers can use the full width */
+  .msg.assistant .msg-body:has(.code-block) { width: min(86%, 760px); }
+
+  .msg.error .msg-body {
+    color: var(--red);
+    font-family: var(--mono);
+    font-size: 13px;
+    background: rgba(255,68,102,0.07);
+    border-color: rgba(255,68,102,0.45);
+  }
+
+  .msg.error .msg-body::after { background: rgba(255,68,102,0.45); }
   .msg.error .msg-label { color: var(--red); }
+
+  /* consecutive bubbles from the same side sit closer together */
+  .msg.user + .msg.user, .msg.assistant:not(.error) + .msg.assistant:not(.error) { margin-top: -0.85rem; }
+  .msg.user + .msg.user .msg-label, .msg.assistant:not(.error) + .msg.assistant:not(.error) .msg-label { display: none; }
 
   /* rendered markdown */
   .msg-body > * + * { margin-top: 0.75em; }
@@ -553,6 +611,8 @@
     .chat-shell { padding: 0; }
     .window { border-left: none; border-right: none; border-top: none; }
     .messages { padding: 1.25rem 16px; }
+    .msg-body, .msg.assistant .msg-body { max-width: 88%; }
+    .msg.assistant .msg-body:has(.code-block) { width: 88%; }
     .titlebar .title-text { display: none; }
     .composer-hint .kbd-hint { display: none; }
     .hp .hp-long { display: none; }
