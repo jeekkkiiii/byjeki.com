@@ -1,25 +1,36 @@
-// AI chat backend: forwards the conversation to an Ollama server and streams the reply back.
+// AI chat backend: forwards the conversation to Groq (or any OpenAI-compatible API)
+// and streams the reply back to the browser.
 // Runs after the "auth" edge function (see netlify.toml), so only logged-in visitors reach it.
 //
 // Environment variables (Netlify → Site configuration → Environment variables):
-//   OLLAMA_API_KEY   – API key from ollama.com (Ollama Cloud). Required for Ollama Cloud.
-//   OLLAMA_HOST      – optional; defaults to https://ollama.com. Set this to your own server
-//                      (e.g. a Cloudflare Tunnel URL to Ollama on your PC) to self-host.
-//   OLLAMA_MODEL     – optional; defaults to gpt-oss:120b.
-//   CHAT_SYSTEM_PROMPT – optional; instructions/personality for the assistant.
+//   GROQ_API_KEY       – required; free key from console.groq.com → API Keys
+//   AI_MODEL           – optional; defaults to openai/gpt-oss-120b
+//   AI_BASE_URL        – optional; defaults to https://api.groq.com/openai/v1
+//                        (point at another OpenAI-compatible provider to switch, e.g.
+//                        https://openrouter.ai/api/v1 or
+//                        https://generativelanguage.googleapis.com/v1beta/openai)
+//   CHAT_SYSTEM_PROMPT – optional; instructions/personality for the assistant
 //
 // GET  /api/chat → { configured, model }   (used by the page to show status)
 // POST /api/chat → body { messages: [{ role: "user" | "assistant", content: string }] }
-//                  streams newline-delimited JSON straight from Ollama's /api/chat.
+//                  streams newline-delimited JSON lines to the browser:
+//                    {"message":{"content":"..."}}   – a piece of the reply
+//                    {"message":{"thinking":"..."}}  – the model is reasoning
+//                    {"error":"..."}                 – something went wrong mid-reply
+//                    {"done":true}                   – finished
 
 import type { Context } from "@netlify/edge-functions";
 
 const MAX_MESSAGES = 40;
 const MAX_CHARS_PER_MESSAGE = 8000;
 const MAX_TOTAL_CHARS = 48000;
+const DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
+const DEFAULT_MODEL = "openai/gpt-oss-120b";
 const DEFAULT_SYSTEM_PROMPT =
   "You are a helpful, friendly AI assistant on Jeki's personal portfolio website (byjeki.com). " +
   "Answer clearly and concisely. Use Markdown for formatting, including fenced code blocks for code.";
+
+const enc = new TextEncoder();
 
 function env(name: string): string | undefined {
   return Netlify.env.get(name)?.trim() || undefined;
@@ -33,10 +44,10 @@ function json(body: unknown, status = 200): Response {
 }
 
 function settings() {
-  const apiKey = env("OLLAMA_API_KEY");
-  const host = (env("OLLAMA_HOST") ?? (apiKey ? "https://ollama.com" : "")).replace(/\/+$/, "");
-  const model = env("OLLAMA_MODEL") ?? "gpt-oss:120b";
-  return { apiKey, host, model, configured: host !== "" };
+  const apiKey = env("GROQ_API_KEY") ?? env("AI_API_KEY");
+  const baseUrl = (env("AI_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
+  const model = env("AI_MODEL") ?? DEFAULT_MODEL;
+  return { apiKey, baseUrl, model, configured: !!apiKey };
 }
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -55,11 +66,59 @@ function cleanMessages(input: unknown): Msg[] | null {
   return msgs;
 }
 
+function friendlyError(status: number, model: string): string {
+  if (status === 401 || status === 403) return "The AI service rejected the API key.";
+  if (status === 404) return `Model "${model}" wasn't found on the AI service.`;
+  if (status === 413) return "This conversation is too long. Start a new chat.";
+  if (status === 429) return "The AI has hit its free usage limit for now. Try again in a little while.";
+  if (status >= 500) return "The AI service is having problems right now. Try again shortly.";
+  return "The AI service returned an error.";
+}
+
+// Converts an OpenAI-style Server-Sent Events stream into the NDJSON lines the page reads.
+function sseToNdjson(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const line = (obj: unknown) => enc.encode(JSON.stringify(obj) + "\n");
+
+  function handleEvent(data: string, out: TransformStreamDefaultController<Uint8Array>) {
+    if (data === "[DONE]") return;
+    let evt: any;
+    try {
+      evt = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (evt.error) {
+      out.enqueue(line({ error: evt.error.message ?? "The AI service returned an error." }));
+      return;
+    }
+    const delta = evt.choices?.[0]?.delta ?? {};
+    if (delta.reasoning) out.enqueue(line({ message: { thinking: delta.reasoning } }));
+    if (delta.content) out.enqueue(line({ message: { content: delta.content } }));
+  }
+
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, out) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() ?? "";
+        for (const l of lines) if (l.startsWith("data:")) handleEvent(l.slice(5).trim(), out);
+      },
+      flush(out) {
+        if (buffer.startsWith("data:")) handleEvent(buffer.slice(5).trim(), out);
+        out.enqueue(line({ done: true }));
+      },
+    }),
+  );
+}
+
 export default async function handler(request: Request, _context: Context) {
   const s = settings();
 
   if (request.method === "GET") {
-    return json({ configured: s.configured, model: s.configured ? s.model : null });
+    return json({ configured: s.configured, model: s.configured ? s.model.replace(/^.*\//, "") : null });
   }
   if (request.method !== "POST") {
     return json({ error: "method_not_allowed" }, 405);
@@ -72,14 +131,11 @@ export default async function handler(request: Request, _context: Context) {
   const messages = cleanMessages(body?.messages);
   if (!messages) return json({ error: "bad_request", message: "Invalid conversation." }, 400);
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (s.apiKey) headers.Authorization = `Bearer ${s.apiKey}`;
-
   let upstream: Response;
   try {
-    upstream = await fetch(`${s.host}/api/chat`, {
+    upstream = await fetch(`${s.baseUrl}/chat/completions`, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.apiKey}` },
       body: JSON.stringify({
         model: s.model,
         stream: true,
@@ -88,25 +144,17 @@ export default async function handler(request: Request, _context: Context) {
       signal: request.signal,
     });
   } catch (err) {
-    console.error("Ollama unreachable", err);
-    return json({ error: "upstream_unreachable", message: "Couldn't reach the AI server." }, 502);
+    console.error("AI service unreachable", err);
+    return json({ error: "upstream_unreachable", message: "Couldn't reach the AI service." }, 502);
   }
 
   if (!upstream.ok || !upstream.body) {
     const detail = await upstream.text().catch(() => "");
-    console.error("Ollama error", upstream.status, detail);
-    const message =
-      upstream.status === 401 || upstream.status === 403
-        ? "The AI server rejected the API key."
-        : upstream.status === 404
-          ? `Model "${s.model}" wasn't found on the AI server.`
-          : upstream.status === 429
-            ? "The AI is getting too many requests right now. Try again shortly."
-            : "The AI server returned an error.";
-    return json({ error: "upstream", status: upstream.status, message }, 502);
+    console.error("AI service error", upstream.status, detail);
+    return json({ error: "upstream", status: upstream.status, message: friendlyError(upstream.status, s.model) }, 502);
   }
 
-  return new Response(upstream.body, {
+  return new Response(sseToNdjson(upstream.body), {
     status: 200,
     headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",

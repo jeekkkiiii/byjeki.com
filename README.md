@@ -40,22 +40,14 @@ Removing an email from `ALLOWED_EMAILS` revokes that person's access on their ne
 
 ## AI Chat
 `chat.html` (the **AI CHAT** link in the nav) is a chat page behind the login. The browser talks to
-`/api/chat` (`netlify/edge-functions/chat.ts`), which forwards the conversation to an Ollama server,
-so API keys never reach the browser. Until it's configured the page shows "NOT CONNECTED".
+`/api/chat` (`netlify/edge-functions/chat.ts`), which forwards the conversation to **Groq**,
+so the API key never reaches the browser. Until it's configured the page shows "NOT CONNECTED".
 
 | Variable | Secret? | Purpose |
 |---|---|---|
-| `OLLAMA_API_KEY` | yes | API key from ollama.com (needed for Ollama Cloud) |
-| `OLLAMA_MODEL` | no | Model to use, e.g. `gpt-oss:120b` (default) or `gpt-oss:20b` |
-| `OLLAMA_HOST` | no | Optional. Defaults to `https://ollama.com`. Set to your own Ollama server's public URL to self-host |
+| `GROQ_API_KEY` | yes | Free API key from console.groq.com → **API Keys** |
+| `AI_MODEL` | no | Optional. Defaults to `openai/gpt-oss-120b`; `openai/gpt-oss-20b` is faster |
 | `CHAT_SYSTEM_PROMPT` | no | Optional. Personality/instructions for the assistant |
+| `AI_BASE_URL` | no | Optional. Defaults to Groq. Any OpenAI-compatible API works (e.g. `https://openrouter.ai/api/v1`); put that provider's key in `GROQ_API_KEY` or `AI_API_KEY` |
 
-### Option 1 – Ollama Cloud (recommended)
-1. Sign up at ollama.com → **Settings → API keys** → create a key.
-2. Add `OLLAMA_API_KEY` (secret) and `OLLAMA_MODEL` in Netlify, then redeploy.
-
-### Option 2 – Ollama on your own computer (advanced)
-Netlify can't reach `localhost`, so your PC must be exposed with a tunnel (e.g. Cloudflare Tunnel),
-then set `OLLAMA_HOST` to the tunnel URL and `OLLAMA_MODEL` to a model you've pulled.
-⚠️ A bare tunnel lets anyone who finds the URL use your Ollama; protect it (e.g. Cloudflare Access)
-and note your PC must stay on for the chat to work.
+After adding or changing variables, redeploy (**Deploys → Trigger deploy → Deploy site**).

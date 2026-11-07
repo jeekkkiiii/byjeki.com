@@ -553,7 +553,7 @@
       if (!res.ok || !res.body) {
         return res.json().catch(function () { return {}; }).then(function (d) {
           var msg = d.message || ('Request failed (' + res.status + ').');
-          if (d.error === 'not_configured') msg = 'The AI isn\'t connected yet. The site owner needs to add the Ollama settings in Netlify — see the setup guide in the README.';
+          if (d.error === 'not_configured') msg = 'The AI isn\'t connected yet. The site owner needs to add the Groq API key in Netlify — see the setup guide in the README.';
           if (res.status === 401 || res.redirected) msg = 'Your login has expired. Refresh the page and sign in again.';
           throw new Error(msg);
         });
