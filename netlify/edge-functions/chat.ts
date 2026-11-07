@@ -50,21 +50,23 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function providerFor(apiKey: string | undefined, baseUrl: string | undefined) {
+function providerFor(apiKey: string | undefined, baseUrl: string | undefined, model: string | undefined) {
   if (baseUrl) {
     const host = baseUrl.toLowerCase();
     if (host.includes("googleapis.com")) return PROVIDERS.gemini;
     if (host.includes("groq.com")) return PROVIDERS.groq;
     return null;
   }
-  if (apiKey?.startsWith("AIza")) return PROVIDERS.gemini;
+  // Google keys start with "AIza" (classic) or "AQ." (newer format); gemini/gemma models are Google's too.
+  if (apiKey?.startsWith("AIza") || apiKey?.startsWith("AQ.")) return PROVIDERS.gemini;
+  if (model && /^(models\/)?(gemini|gemma)/i.test(model)) return PROVIDERS.gemini;
   return PROVIDERS.groq;
 }
 
 function settings() {
   const apiKey = env("AI_API_KEY") ?? env("GROQ_API_KEY");
   const customBase = env("AI_BASE_URL")?.replace(/\/+$/, "");
-  const provider = providerFor(apiKey, customBase);
+  const provider = providerFor(apiKey, customBase, env("AI_MODEL"));
   const baseUrl = customBase ?? provider!.baseUrl;
   const model = (env("AI_MODEL") ?? provider?.model ?? "").replace(/^models\//, "");
   let providerName: string = provider?.name ?? "the AI service";

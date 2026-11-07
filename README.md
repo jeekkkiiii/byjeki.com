@@ -43,7 +43,7 @@ Removing an email from `ALLOWED_EMAILS` revokes that person's access on their ne
 `/api/chat` (`netlify/edge-functions/chat.ts`), which forwards the conversation to an AI provider
 (Gemini or Groq), so the API key never reaches the browser. Until it's configured the page shows "NOT CONNECTED".
 
-The provider is detected from the key: a Gemini key (`AIza…`) uses Google's Gemini API, otherwise Groq.
+The provider is detected automatically: a Google key (`AIza…` or `AQ.…`) or a `gemini…` model uses Google's Gemini API, otherwise Groq.
 
 | Variable | Secret? | Purpose |
 |---|---|---|
