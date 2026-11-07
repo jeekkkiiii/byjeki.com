@@ -40,14 +40,18 @@ Removing an email from `ALLOWED_EMAILS` revokes that person's access on their ne
 
 ## AI Chat
 `chat.html` (the **AI CHAT** link in the nav) is a chat page behind the login. The browser talks to
-`/api/chat` (`netlify/edge-functions/chat.ts`), which forwards the conversation to **Groq**,
-so the API key never reaches the browser. Until it's configured the page shows "NOT CONNECTED".
+`/api/chat` (`netlify/edge-functions/chat.ts`), which forwards the conversation to an AI provider
+(Gemini or Groq), so the API key never reaches the browser. Until it's configured the page shows "NOT CONNECTED".
+
+The provider is detected from the key: a Gemini key (`AIza…`) uses Google's Gemini API, otherwise Groq.
 
 | Variable | Secret? | Purpose |
 |---|---|---|
-| `GROQ_API_KEY` | yes | Free API key from console.groq.com → **API Keys** |
-| `AI_MODEL` | no | Optional. Defaults to `openai/gpt-oss-120b`; `openai/gpt-oss-20b` is faster |
+| `AI_API_KEY` | yes | Gemini key from aistudio.google.com → **Get API key** (or a Groq key) |
+| `GROQ_API_KEY` | yes | Alternative name for a Groq key (`AI_API_KEY` wins if both are set) |
+| `AI_MODEL` | no | Optional. Defaults: Gemini `gemini-flash-lite-latest`, Groq `openai/gpt-oss-120b` |
+| `AI_BASE_URL` | no | Optional. Only needed for other OpenAI-compatible providers (e.g. `https://openrouter.ai/api/v1`) |
 | `CHAT_SYSTEM_PROMPT` | no | Optional. Personality/instructions for the assistant |
-| `AI_BASE_URL` | no | Optional. Defaults to Groq. Any OpenAI-compatible API works (e.g. `https://openrouter.ai/api/v1`); put that provider's key in `GROQ_API_KEY` or `AI_API_KEY` |
 
+If a model name is wrong or retired, the chat error lists models that are available.
 After adding or changing variables, redeploy (**Deploys → Trigger deploy → Deploy site**).

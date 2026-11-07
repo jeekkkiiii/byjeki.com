@@ -520,7 +520,7 @@
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (d) {
         configured = !!d.configured;
-        if (configured) setStatus('online', 'ONLINE · ' + String(d.model || '').toUpperCase());
+        if (configured) setStatus('online', 'ONLINE · ' + (d.provider ? String(d.provider).toUpperCase() + ' · ' : '') + String(d.model || '').toUpperCase());
         else setStatus('offline', 'NOT CONNECTED');
       })
       .catch(function () { configured = null; setStatus('offline', 'OFFLINE'); });
@@ -553,7 +553,7 @@
       if (!res.ok || !res.body) {
         return res.json().catch(function () { return {}; }).then(function (d) {
           var msg = d.message || ('Request failed (' + res.status + ').');
-          if (d.error === 'not_configured') msg = 'The AI isn\'t connected yet. The site owner needs to add the Groq API key in Netlify — see the setup guide in the README.';
+          if (d.error === 'not_configured') msg = 'The AI isn\'t connected yet. The site owner needs to add an AI API key in Netlify — see the setup guide in the README.';
           if (res.status === 401 || res.redirected) msg = 'Your login has expired. Refresh the page and sign in again.';
           throw new Error(msg);
         });

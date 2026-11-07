@@ -24,8 +24,15 @@ import type { Context } from "@netlify/edge-functions";
 const MAX_MESSAGES = 40;
 const MAX_CHARS_PER_MESSAGE = 8000;
 const MAX_TOTAL_CHARS = 48000;
-const DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
-const DEFAULT_MODEL = "openai/gpt-oss-120b";
+// Known providers. If AI_BASE_URL isn't set, the provider is picked from the API key's format.
+const PROVIDERS = {
+  groq: { name: "Groq", baseUrl: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b" },
+  gemini: {
+    name: "Gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    model: "gemini-flash-lite-latest",
+  },
+} as const;
 const DEFAULT_SYSTEM_PROMPT =
   "You are a helpful, friendly AI assistant on Jeki's personal portfolio website (byjeki.com). " +
   "Answer clearly and concisely. Use Markdown for formatting, including fenced code blocks for code.";
@@ -43,11 +50,48 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+function providerFor(apiKey: string | undefined, baseUrl: string | undefined) {
+  if (baseUrl) {
+    const host = baseUrl.toLowerCase();
+    if (host.includes("googleapis.com")) return PROVIDERS.gemini;
+    if (host.includes("groq.com")) return PROVIDERS.groq;
+    return null;
+  }
+  if (apiKey?.startsWith("AIza")) return PROVIDERS.gemini;
+  return PROVIDERS.groq;
+}
+
 function settings() {
-  const apiKey = env("GROQ_API_KEY") ?? env("AI_API_KEY");
-  const baseUrl = (env("AI_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
-  const model = env("AI_MODEL") ?? DEFAULT_MODEL;
-  return { apiKey, baseUrl, model, configured: !!apiKey };
+  const apiKey = env("AI_API_KEY") ?? env("GROQ_API_KEY");
+  const customBase = env("AI_BASE_URL")?.replace(/\/+$/, "");
+  const provider = providerFor(apiKey, customBase);
+  const baseUrl = customBase ?? provider!.baseUrl;
+  const model = (env("AI_MODEL") ?? provider?.model ?? "").replace(/^models\//, "");
+  let providerName: string = provider?.name ?? "the AI service";
+  let validBase = true;
+  try {
+    const u = new URL(baseUrl);
+    if (!provider) providerName = u.hostname;
+  } catch {
+    validBase = false;
+  }
+  return { apiKey, baseUrl, model, providerName, configured: !!apiKey && !!model && validBase };
+}
+
+// Looks up which models the provider offers, to suggest alternatives when a model isn't found.
+async function suggestModels(baseUrl: string, apiKey: string, wanted: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${baseUrl}/models`, { headers: { Authorization: `Bearer ${apiKey}` } });
+    if (!res.ok) return [];
+    const ids: string[] = ((await res.json())?.data ?? [])
+      .map((m: { id?: string }) => String(m.id ?? "").replace(/^models\//, ""))
+      .filter((id: string) => id && !/embed|tts|image|audio|whisper|guard|veo|imagen/i.test(id));
+    const words = wanted.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !/^\d+$/.test(w));
+    const score = (id: string) => words.filter((w) => id.toLowerCase().includes(w)).length;
+    return ids.sort((a, b) => score(b) - score(a)).slice(0, 5);
+  } catch {
+    return [];
+  }
 }
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -66,9 +110,9 @@ function cleanMessages(input: unknown): Msg[] | null {
   return msgs;
 }
 
-function friendlyError(status: number, model: string): string {
-  if (status === 401 || status === 403) return "The AI service rejected the API key.";
-  if (status === 404) return `Model "${model}" wasn't found on the AI service.`;
+function friendlyError(status: number, model: string, provider: string): string {
+  if (status === 400 || status === 401 || status === 403) return `${provider} rejected the request — check the API key is correct and belongs to ${provider}.`;
+  if (status === 404) return `Model "${model}" wasn't found on ${provider}.`;
   if (status === 413) return "This conversation is too long. Start a new chat.";
   if (status === 429) return "The AI has hit its free usage limit for now. Try again in a little while.";
   if (status >= 500) return "The AI service is having problems right now. Try again shortly.";
@@ -118,7 +162,11 @@ export default async function handler(request: Request, _context: Context) {
   const s = settings();
 
   if (request.method === "GET") {
-    return json({ configured: s.configured, model: s.configured ? s.model.replace(/^.*\//, "") : null });
+    return json({
+      configured: s.configured,
+      provider: s.configured ? s.providerName : null,
+      model: s.configured ? s.model.replace(/^.*\//, "") : null,
+    });
   }
   if (request.method !== "POST") {
     return json({ error: "method_not_allowed" }, 405);
@@ -151,7 +199,14 @@ export default async function handler(request: Request, _context: Context) {
   if (!upstream.ok || !upstream.body) {
     const detail = await upstream.text().catch(() => "");
     console.error("AI service error", upstream.status, detail);
-    return json({ error: "upstream", status: upstream.status, message: friendlyError(upstream.status, s.model) }, 502);
+    let message = friendlyError(upstream.status, s.model, s.providerName);
+    if (upstream.status === 404) {
+      const options = await suggestModels(s.baseUrl, s.apiKey!, s.model);
+      message += options.length
+        ? ` Set AI_MODEL in Netlify to one of: ${options.join(", ")}`
+        : " Check AI_MODEL and AI_BASE_URL in Netlify.";
+    }
+    return json({ error: "upstream", status: upstream.status, message }, 502);
   }
 
   return new Response(sseToNdjson(upstream.body), {
