@@ -58,3 +58,9 @@ The provider is detected automatically: a Google key (`AIza…` or `AQ.…`) or 
 Token usage is stored in Netlify Blobs (built in, no setup needed; `@netlify/blobs` in `package.json` is installed by Netlify automatically).
 If a model name is wrong or retired, the chat error lists models that are available.
 After adding or changing variables, redeploy (**Deploys → Trigger deploy → Deploy site**).
+
+### Chat history
+The sidebar on the chat page lists every conversation. Chats are saved per logged-in person in
+Netlify Blobs (store `ai-chats`) by `netlify/edge-functions/chats.ts` (`/api/chats`), so they follow you
+across devices. Each person (the password login, or each Google account) only sees their own chats.
+Chats can be searched, renamed (✎) and deleted (✕). No setup needed.

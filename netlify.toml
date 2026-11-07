@@ -20,6 +20,14 @@
   function = "chat"
   path = "/api/chat"
 
+[[edge_functions]]
+  function = "chats"
+  path = "/api/chats"
+
+[[edge_functions]]
+  function = "chats"
+  path = "/api/chats/*"
+
 [[headers]]
   for = "/*"
   [headers.values]

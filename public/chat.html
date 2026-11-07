@@ -88,15 +88,136 @@
     flex: 1;
     min-height: 0;
     width: 100%;
-    max-width: 880px;
+    max-width: 1180px;
     margin: 0 auto;
     padding: 1.25rem 16px;
     display: flex;
-    flex-direction: column;
+    gap: 14px;
   }
+
+  /* ─── CHAT HISTORY SIDEBAR ─── */
+  .sidebar {
+    width: 268px;
+    flex-shrink: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-panel);
+    border: 1px solid var(--green-border);
+  }
+
+  .sidebar-head {
+    flex-shrink: 0;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--green-border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .sidebar-title { display: flex; align-items: center; justify-content: space-between; font-size: 11px; letter-spacing: 0.12em; color: var(--text-dim); }
+  .sidebar-title .count { color: var(--text-muted); }
+  .sidebar-close { display: none; }
+
+  .new-chat-btn {
+    width: 100%;
+    background: var(--green);
+    color: #000;
+    border: none;
+    padding: 9px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .new-chat-btn:hover { background: #fff; box-shadow: 0 4px 20px rgba(0,255,136,0.35); }
+  .new-chat-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+  .chat-search {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--green-border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 10px;
+    outline: none;
+  }
+
+  .chat-search:focus { border-color: var(--green); }
+  .chat-search::placeholder { color: var(--text-muted); }
+
+  .chat-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 6px 6px 12px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--green-border) transparent;
+  }
+
+  .chat-group { font-size: 10px; letter-spacing: 0.16em; color: var(--text-muted); padding: 12px 8px 6px; }
+
+  .chat-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-left: 2px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .chat-item:hover { background: var(--green-muted); }
+  .chat-item.active { background: var(--green-muted); border-left-color: var(--green); }
+
+  .chat-open {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 8px 4px 8px 10px;
+    cursor: pointer;
+    font-family: var(--mono);
+    color: var(--text-dim);
+  }
+
+  .chat-open:focus-visible { outline: 1px solid var(--green); outline-offset: -1px; }
+  .chat-item.active .chat-open { color: var(--green); }
+  .chat-open .t { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-open .m { display: block; font-size: 10px; color: var(--text-muted); letter-spacing: 0.06em; margin-top: 2px; }
+
+  .chat-actions { display: flex; gap: 2px; padding-right: 4px; opacity: 0; transition: opacity 0.15s; }
+  .chat-item:hover .chat-actions, .chat-item.active .chat-actions, .chat-item:focus-within .chat-actions { opacity: 1; }
+
+  .chat-action {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+  }
+
+  .chat-action:hover { color: var(--green); border-color: var(--green-border); }
+  .chat-action.del:hover { color: var(--red); border-color: rgba(255,68,102,0.4); }
+
+  .chat-empty, .chat-note { padding: 16px 10px; font-size: 11px; line-height: 1.7; color: var(--text-muted); letter-spacing: 0.04em; }
+  .chat-note.warn { color: var(--amber); }
+
+  .history-btn { display: none; }
+  .title-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+
+  .backdrop { display: none; }
 
   .window {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -406,6 +527,25 @@
 
   .composer-hint { margin-top: 8px; font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; display: flex; justify-content: space-between; gap: 1rem; }
 
+  /* On tablets and phones the history becomes a slide-out drawer */
+  @media (max-width: 900px) {
+    .sidebar {
+      position: fixed;
+      top: 0; bottom: 0; left: 0;
+      z-index: 50;
+      width: min(300px, 86vw);
+      transform: translateX(-105%);
+      transition: transform 0.25s ease;
+      box-shadow: 8px 0 40px rgba(0,0,0,0.6);
+    }
+    body.drawer-open .sidebar { transform: none; }
+    .backdrop { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.6); opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+    body.drawer-open .backdrop { opacity: 1; pointer-events: auto; }
+    .sidebar-close { display: inline-block; }
+    .history-btn { display: inline-block; }
+    .chat-actions { opacity: 1; }
+  }
+
   @media (max-width: 640px) {
     nav { padding: 0 16px; gap: 1rem; }
     .nav-prompt .hide-sm { display: none; }
@@ -441,10 +581,23 @@
 </nav>
 
 <div class="chat-shell">
+  <aside class="sidebar" id="sidebar" aria-label="Chat history">
+    <div class="sidebar-head">
+      <div class="sidebar-title">
+        <span>SAVED_CHATS/ <span class="count" id="chatCount"></span></span>
+        <button class="icon-btn sidebar-close" id="closeDrawerBtn" type="button" aria-label="Close chat history">✕</button>
+      </div>
+      <button class="new-chat-btn" id="newChatBtn" type="button">[ + NEW CHAT ]</button>
+      <input class="chat-search" id="chatSearch" type="search" placeholder="Search chats…" aria-label="Search chats" autocomplete="off">
+    </div>
+    <div class="chat-list" id="chatList" role="list" aria-label="Previous chats"></div>
+  </aside>
+  <div class="backdrop" id="backdrop"></div>
+
   <div class="window">
     <div class="titlebar">
-      <span class="title-text">AI_SESSION.LOG</span>
-      <button class="icon-btn" id="newChatBtn" type="button">[ + NEW CHAT ]</button>
+      <button class="icon-btn history-btn" id="openDrawerBtn" type="button" aria-label="Show chat history">☰ CHATS</button>
+      <span class="title-text" id="chatTitle">AI_SESSION.LOG</span>
       <div class="status" id="status"><span class="dot"></span><span id="statusText">CONNECTING…</span></div>
     </div>
 
@@ -478,7 +631,7 @@
   <div class="welcome">
     <p class="eyebrow">// ASSISTANT ONLINE</p>
     <h1>AI <span>C</span>HAT</h1>
-    <p>Talk to an AI assistant, just like a normal chat. Ask questions, brainstorm ideas, get help with code or writing. Your conversation stays in this browser until you start a new chat.</p>
+    <p>Talk to an AI assistant, just like a normal chat. Ask questions, brainstorm ideas, get help with code or writing. Every chat is saved to the list on the left, so you can come back to it any time, on any device.</p>
     <div class="suggestions">
       <button class="suggestion" type="button">Help me brainstorm a narrative game idea</button>
       <button class="suggestion" type="button">Explain how a CRT scanline effect works in CSS</button>
@@ -491,7 +644,8 @@
 (function () {
   'use strict';
 
-  var STORE_KEY = 'byjeki_chat_v1';
+  var LEGACY_KEY = 'byjeki_chat_v1';      // single conversation kept by older versions of this page
+  var CURRENT_KEY = 'byjeki_chat_current'; // which chat was open last
   var messagesEl = document.getElementById('messages');
   var form = document.getElementById('chatForm');
   var input = document.getElementById('input');
@@ -499,18 +653,16 @@
   var statusEl = document.getElementById('status');
   var statusText = document.getElementById('statusText');
 
-  var history = [];       // [{ role: 'user' | 'assistant', content }]
+  // active = the conversation on screen: { id, title, messages: [{ role, content }], saved }
+  var active = { id: null, title: '', messages: [], saved: false };
+  var summaries = [];     // sidebar list: [{ id, title, createdAt, updatedAt, count }], newest first
+  var cache = {};         // id → full chat already downloaded
+  var historyOk = true;   // false if the server-side history store is unavailable
   var controller = null;  // AbortController for the in-flight request
   var configured = null;  // null = unknown, true/false after status check
 
-  // ─── storage (best effort) ───
-  function load() {
-    try { var v = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); return Array.isArray(v) ? v : []; }
-    catch (e) { return []; }
-  }
-  function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(history.slice(-60))); } catch (e) {}
-  }
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
 
   // ─── tiny, safe markdown renderer ───
   function esc(s) {
@@ -707,8 +859,15 @@
     input.value = '';
     autosize();
 
-    history.push({ role: 'user', content: text });
-    save();
+    var chat = active;
+    if (!chat.id) {
+      chat.id = newId();
+      chat.title = titleFrom(text);
+      upsertSummary({ id: chat.id, title: chat.title, createdAt: nowIso(), updatedAt: nowIso(), count: 1 }, true);
+      setActiveUrl(chat.id);
+      updateChatTitle();
+    }
+    chat.messages.push({ role: 'user', content: text });
     addMessage('user', text);
 
     var body = addMessage('assistant', '');
@@ -722,7 +881,7 @@
     fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: history }),
+      body: JSON.stringify({ messages: chat.messages }),
       signal: controller.signal
     }).then(function (res) {
       if (!res.ok || !res.body) {
@@ -767,34 +926,38 @@
       }
       return pump();
     }).then(function () {
-      finish(body, reply);
+      finish(chat, body, reply);
     }).catch(function (err) {
       if (err && err.name === 'AbortError') {
-        finish(body, reply, true);
+        finish(chat, body, reply, true);
         return;
       }
+      var onScreen = chat === active;
       body.parentNode.remove();
-      if (reply) finish(addMessage('assistant', ''), reply);
-      addMessage('assistant', (err && err.message) || 'Something went wrong.', { error: true });
-      if (!reply) { history.pop(); save(); input.value = text; autosize(); }
+      if (reply) finish(chat, onScreen ? addMessage('assistant', '') : document.createElement('div'), reply);
+      if (onScreen) addMessage('assistant', (err && err.message) || 'Something went wrong.', { error: true });
+      if (!reply) {
+        chat.messages.pop();
+        if (onScreen) { input.value = text; autosize(); }
+        if (!chat.saved && !chat.messages.length) dropUnsaved(chat);
+      }
       refreshUsage();
       controller = null;
       setBusy(false);
     });
   }
 
-  function finish(body, reply, stopped) {
+  function finish(chat, body, reply, stopped) {
     if (stopped) refreshUsage();
     if (reply) {
       body.innerHTML = renderMarkdown(reply);
-      history.push({ role: 'assistant', content: reply });
-      save();
-    } else if (stopped) {
-      body.parentNode.remove();
-      history.pop(); save();
+      chat.messages.push({ role: 'assistant', content: reply });
+      persist(chat);
     } else {
-      body.innerHTML = '<em style="color:var(--text-muted)">(no response)</em>';
-      history.pop(); save();
+      if (stopped) body.parentNode.remove();
+      else body.innerHTML = '<em style="color:var(--text-muted)">(no response)</em>';
+      chat.messages.pop();
+      if (!chat.saved && !chat.messages.length) dropUnsaved(chat);
     }
     if (stopped && reply) {
       var note = document.createElement('div');
@@ -804,7 +967,264 @@
     }
     controller = null;
     setBusy(false);
+    if (chat === active) input.focus();
+  }
+
+  // ─── chat history (saved on the server, per logged-in user) ───
+  var listEl = document.getElementById('chatList');
+  var countEl = document.getElementById('chatCount');
+  var searchEl = document.getElementById('chatSearch');
+  var titleEl = document.getElementById('chatTitle');
+
+  function nowIso() { return new Date().toISOString(); }
+
+  function newId() {
+    var c = window.crypto;
+    if (c && c.randomUUID) return c.randomUUID();
+    var a = new Uint8Array(16);
+    (c || { getRandomValues: function (x) { for (var i = 0; i < x.length; i++) x[i] = Math.random() * 256; return x; } }).getRandomValues(a);
+    return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+  }
+
+  function titleFrom(text) {
+    var t = text.replace(/[`*#>_~]/g, '').replace(/\s+/g, ' ').trim();
+    return (t || 'New chat').slice(0, 80);
+  }
+
+  function api(method, path, body) {
+    return fetch('/api/chats' + (path ? '/' + encodeURIComponent(path) : ''), {
+      method: method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) { var e = new Error(d.message || ('Request failed (' + r.status + ')')); e.status = r.status; throw e; }
+        return d;
+      });
+    });
+  }
+
+  function setActiveUrl(id) {
+    lsSet(CURRENT_KEY, id);
+    try { history.replaceState(null, '', id ? '#c=' + id : location.pathname); } catch (e) {}
+  }
+
+  function updateChatTitle() {
+    titleEl.textContent = active.id ? active.title : 'NEW_SESSION';
+    titleEl.title = titleEl.textContent;
+    document.title = (active.id ? active.title + ' — ' : '') + 'AI_CHAT.EXE';
+  }
+
+  function upsertSummary(sum, render) {
+    summaries = [sum].concat(summaries.filter(function (c) { return c.id !== sum.id; }));
+    summaries.sort(function (a, b) { return b.updatedAt.localeCompare(a.updatedAt); });
+    if (render) renderList();
+  }
+
+  function dropUnsaved(chat) {
+    summaries = summaries.filter(function (c) { return c.id !== chat.id; });
+    if (chat === active) { chat.id = null; chat.title = ''; setActiveUrl(null); updateChatTitle(); }
+    renderList();
+  }
+
+  function persist(chat) {
+    if (!historyOk) return;
+    var snapshot = chat.messages.slice();
+    api('PUT', chat.id, { title: chat.title, messages: snapshot }).then(function (sum) {
+      chat.saved = true;
+      cache[chat.id] = { id: chat.id, title: sum.title, messages: snapshot };
+      upsertSummary(sum, true);
+    }).catch(function (err) {
+      showNote(err.status === 401 ? 'Your login has expired — refresh to keep saving chats.' : 'Couldn\'t save this chat: ' + err.message, true);
+    });
+  }
+
+  function dayLabel(iso) {
+    var d = new Date(iso), now = new Date();
+    var start = function (x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); };
+    var days = Math.round((start(now) - start(d)) / 864e5);
+    if (days <= 0) return 'TODAY';
+    if (days === 1) return 'YESTERDAY';
+    if (days < 7) return 'PREVIOUS 7 DAYS';
+    if (days < 30) return 'PREVIOUS 30 DAYS';
+    return d.toLocaleDateString([], { month: 'long', year: 'numeric' }).toUpperCase();
+  }
+
+  function metaLabel(c) {
+    var d = new Date(c.updatedAt);
+    var when = dayLabel(c.updatedAt) === 'TODAY'
+      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    return when + ' · ' + c.count + ' msg' + (c.count === 1 ? '' : 's');
+  }
+
+  var noteEl = null;
+  function showNote(text, warn) {
+    if (!noteEl) { noteEl = document.createElement('div'); }
+    noteEl.className = 'chat-note' + (warn ? ' warn' : '');
+    noteEl.textContent = text;
+    listEl.prepend(noteEl);
+  }
+
+  function renderList() {
+    var q = searchEl.value.trim().toLowerCase();
+    var shown = summaries.filter(function (c) { return !q || c.title.toLowerCase().indexOf(q) !== -1; });
+    countEl.textContent = summaries.length ? '(' + summaries.length + ')' : '';
+    listEl.innerHTML = '';
+    if (noteEl && noteEl.textContent) listEl.appendChild(noteEl);
+    if (!historyOk) return;
+    if (!shown.length) {
+      var empty = document.createElement('div');
+      empty.className = 'chat-empty';
+      empty.textContent = q ? 'No chats match "' + searchEl.value.trim() + '".' : 'No saved chats yet. Start typing — every new conversation appears here.';
+      listEl.appendChild(empty);
+      return;
+    }
+    var group = null;
+    shown.forEach(function (c) {
+      var g = dayLabel(c.updatedAt);
+      if (g !== group) {
+        group = g;
+        var h = document.createElement('div');
+        h.className = 'chat-group';
+        h.textContent = '// ' + g;
+        listEl.appendChild(h);
+      }
+      var item = document.createElement('div');
+      item.className = 'chat-item' + (c.id === active.id ? ' active' : '');
+      item.setAttribute('role', 'listitem');
+      item.dataset.id = c.id;
+      item.innerHTML =
+        '<button class="chat-open" type="button"><span class="t"></span><span class="m"></span></button>' +
+        '<span class="chat-actions">' +
+          '<button class="chat-action ren" type="button" title="Rename" aria-label="Rename chat">✎</button>' +
+          '<button class="chat-action del" type="button" title="Delete" aria-label="Delete chat">✕</button>' +
+        '</span>';
+      item.querySelector('.t').textContent = c.title;
+      item.querySelector('.m').textContent = metaLabel(c);
+      item.querySelector('.chat-open').title = c.title;
+      if (c.id === active.id) item.querySelector('.chat-open').setAttribute('aria-current', 'true');
+      listEl.appendChild(item);
+    });
+  }
+
+  function renderActive() {
+    messagesEl.innerHTML = '';
+    if (!active.messages.length) showWelcome();
+    else active.messages.forEach(function (m) { addMessage(m.role, m.content); });
+    updateChatTitle();
+    renderList();
+  }
+
+  function newChat() {
+    if (controller) controller.abort();
+    active = { id: null, title: '', messages: [], saved: false };
+    setActiveUrl(null);
+    renderActive();
+    closeDrawer();
     input.focus();
+  }
+
+  function openChat(id) {
+    if (id === active.id) { closeDrawer(); return; }
+    if (controller) controller.abort();
+    var sum = summaries.filter(function (c) { return c.id === id; })[0];
+    active = { id: id, title: sum ? sum.title : '', messages: [], saved: true };
+    setActiveUrl(id);
+    closeDrawer();
+    if (cache[id]) {
+      active.messages = cache[id].messages.slice();
+      active.title = cache[id].title;
+      renderActive();
+      return;
+    }
+    messagesEl.innerHTML = '<div class="chat-empty"><span class="typing">LOADING CHAT <span class="cursor-blink"></span></span></div>';
+    updateChatTitle();
+    renderList();
+    var target = active;
+    api('GET', id).then(function (chat) {
+      cache[id] = chat;
+      if (active !== target) return;
+      active.messages = chat.messages.slice();
+      active.title = chat.title;
+      renderActive();
+    }).catch(function (err) {
+      if (active !== target) return;
+      if (err.status === 404) {
+        summaries = summaries.filter(function (c) { return c.id !== id; });
+        newChat();
+      } else {
+        messagesEl.innerHTML = '';
+        addMessage('assistant', 'Couldn\'t load this chat: ' + err.message, { error: true });
+      }
+    });
+  }
+
+  function renameChat(id) {
+    var sum = summaries.filter(function (c) { return c.id === id; })[0];
+    if (!sum) return;
+    var title = window.prompt('Rename chat', sum.title);
+    if (title === null) return;
+    title = title.replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (!title || title === sum.title) return;
+    sum.title = title;
+    if (cache[id]) cache[id].title = title;
+    if (active.id === id) { active.title = title; updateChatTitle(); }
+    renderList();
+    api('PATCH', id, { title: title }).catch(function (err) { showNote('Couldn\'t rename: ' + err.message, true); });
+  }
+
+  function deleteChat(id) {
+    var sum = summaries.filter(function (c) { return c.id === id; })[0];
+    if (!sum || !window.confirm('Delete "' + sum.title + '"? This can\'t be undone.')) return;
+    summaries = summaries.filter(function (c) { return c.id !== id; });
+    delete cache[id];
+    if (active.id === id) newChat(); else renderList();
+    api('DELETE', id).catch(function (err) { showNote('Couldn\'t delete: ' + err.message, true); });
+  }
+
+  function openDrawer() { document.body.classList.add('drawer-open'); }
+  function closeDrawer() { document.body.classList.remove('drawer-open'); }
+
+  listEl.addEventListener('click', function (e) {
+    var item = e.target.closest('.chat-item');
+    if (!item) return;
+    var id = item.dataset.id;
+    if (e.target.closest('.del')) deleteChat(id);
+    else if (e.target.closest('.ren')) renameChat(id);
+    else if (e.target.closest('.chat-open')) openChat(id);
+  });
+  searchEl.addEventListener('input', renderList);
+  document.getElementById('openDrawerBtn').addEventListener('click', openDrawer);
+  document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
+  document.getElementById('backdrop').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
+
+  function loadHistory() {
+    var fromUrl = (location.hash.match(/^#c=([A-Za-z0-9_-]{8,64})$/) || [])[1];
+    var wanted = fromUrl || lsGet(CURRENT_KEY);
+    var legacy = null;
+    try { legacy = JSON.parse(lsGet(LEGACY_KEY) || 'null'); } catch (e) {}
+
+    api('GET').then(function (d) {
+      summaries = (d.chats || []).slice();
+      // Bring over the conversation older versions of this page kept in the browser.
+      if (Array.isArray(legacy) && legacy.length) {
+        var old = { id: newId(), title: titleFrom((legacy.filter(function (m) { return m.role === 'user'; })[0] || {}).content || 'Earlier chat'), messages: legacy, saved: false };
+        lsSet(LEGACY_KEY, null);
+        upsertSummary({ id: old.id, title: old.title, createdAt: nowIso(), updatedAt: nowIso(), count: legacy.length }, false);
+        cache[old.id] = { id: old.id, title: old.title, messages: legacy.slice() };
+        persist(old);
+        if (!wanted) wanted = old.id;
+      }
+      if (wanted && summaries.some(function (c) { return c.id === wanted; })) openChat(wanted);
+      else renderActive();
+    }).catch(function (err) {
+      historyOk = false;
+      showNote(err.status === 401 ? 'Your login has expired — refresh and sign in again.' : 'Chat history is unavailable right now. You can still chat, but this conversation won\'t be saved.', true);
+      if (Array.isArray(legacy) && legacy.length) active.messages = legacy;
+      renderActive();
+    });
   }
 
   // ─── events ───
@@ -819,13 +1239,7 @@
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
 
-  document.getElementById('newChatBtn').addEventListener('click', function () {
-    if (controller) controller.abort();
-    history = [];
-    save();
-    showWelcome();
-    input.focus();
-  });
+  document.getElementById('newChatBtn').addEventListener('click', newChat);
 
   messagesEl.addEventListener('click', function (e) {
     var btn = e.target.closest('.copy-btn');
@@ -836,12 +1250,8 @@
   });
 
   // ─── start ───
-  history = load();
-  if (history.length) {
-    history.forEach(function (m) { addMessage(m.role, m.content); });
-  } else {
-    showWelcome();
-  }
+  renderActive();
+  loadHistory();
   checkStatus();
   input.focus();
 })();
