@@ -7,7 +7,9 @@
 //   AI_MODEL           – optional; defaults to gemini-flash-lite-latest (Gemini) / openai/gpt-oss-120b (Groq)
 //   AI_BASE_URL        – optional; only for other OpenAI-compatible providers
 //   AI_DAILY_TOKENS    – optional; daily token budget shown in the HP bar (default 500000).
-//                        Resets at midnight Pacific time, like Google's free-tier limits.
+//   AI_DAILY_REQUESTS  – optional; daily request budget shown next to it (default 250).
+//                        Set it to your model's "requests per day" from AI Studio → Rate limits.
+//                        Both reset at midnight Pacific time, like Google's free-tier limits.
 //   CHAT_SYSTEM_PROMPT – optional; instructions/personality for the assistant
 //
 // GET  /api/chat → { configured, provider, model, usage }
@@ -18,7 +20,7 @@
 //                    {"error":"..."}                 – something went wrong mid-reply
 //                    {"usage":{...}}                 – updated token budget
 //                    {"done":true}                   – finished
-//   usage = { used, limit, resetsAt } or null if usage tracking is unavailable
+//   usage = { used, limit, requests, requestLimit, resetsAt } or null if tracking is unavailable
 
 import type { Context } from "@netlify/edge-functions";
 import { getStore } from "@netlify/blobs";
@@ -40,6 +42,7 @@ const DEFAULT_SYSTEM_PROMPT =
   "Answer clearly and concisely. Use Markdown for formatting, including fenced code blocks for code.";
 
 const DEFAULT_DAILY_TOKENS = 500_000;
+const DEFAULT_DAILY_REQUESTS = 250;
 
 const enc = new TextEncoder();
 
@@ -127,11 +130,24 @@ function friendlyError(status: number, model: string, provider: string): string 
 
 // ─── daily token budget (stored in Netlify Blobs) ──────────────────────────
 
-type Usage = { used: number; limit: number; resetsAt: string };
+type Usage = { used: number; limit: number; requests: number; requestLimit: number; resetsAt: string };
+type DayRecord = { tokens?: number; requests?: number; providerExhausted?: boolean };
 
-function dailyLimit(): number {
-  const n = Number(env("AI_DAILY_TOKENS")?.replace(/[,_\s]/g, ""));
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DAILY_TOKENS;
+function numberEnv(name: string, fallback: number): number {
+  const n = Number(env(name)?.replace(/[,_\s]/g, ""));
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+function toUsage(data: DayRecord | null, resetsAt: string): Usage {
+  const requestLimit = numberEnv("AI_DAILY_REQUESTS", DEFAULT_DAILY_REQUESTS);
+  return {
+    used: data?.tokens ?? 0,
+    limit: numberEnv("AI_DAILY_TOKENS", DEFAULT_DAILY_TOKENS),
+    // If the provider told us its daily request quota is gone, show 0 left whatever our count says.
+    requests: data?.providerExhausted ? requestLimit : Math.min(data?.requests ?? 0, requestLimit),
+    requestLimit,
+    resetsAt,
+  };
 }
 
 // Google's free-tier daily limits reset at midnight Pacific time, so the budget does too.
@@ -161,8 +177,8 @@ function usageStore() {
 async function readUsage(): Promise<Usage | null> {
   try {
     const day = pacificDay();
-    const data = (await usageStore().get(day.key, { type: "json" })) as { tokens?: number } | null;
-    return { used: data?.tokens ?? 0, limit: dailyLimit(), resetsAt: day.resetsAt };
+    const data = (await usageStore().get(day.key, { type: "json" })) as DayRecord | null;
+    return toUsage(data, day.resetsAt);
   } catch (err) {
     console.error("usage read failed", err);
     return null;
@@ -173,10 +189,25 @@ async function addUsage(tokens: number): Promise<Usage | null> {
   try {
     const day = pacificDay();
     const store = usageStore();
-    const data = ((await store.get(day.key, { type: "json" })) ?? {}) as { tokens?: number; requests?: number };
-    const next = { tokens: (data.tokens ?? 0) + tokens, requests: (data.requests ?? 0) + 1 };
+    const data = ((await store.get(day.key, { type: "json" })) ?? {}) as DayRecord;
+    const next = { ...data, tokens: (data.tokens ?? 0) + tokens, requests: (data.requests ?? 0) + 1 };
     await store.setJSON(day.key, next);
-    return { used: next.tokens, limit: dailyLimit(), resetsAt: day.resetsAt };
+    return toUsage(next, day.resetsAt);
+  } catch (err) {
+    console.error("usage write failed", err);
+    return null;
+  }
+}
+
+// Called when the provider says its *daily* quota is used up, so the counter shows 0 until reset.
+async function markProviderExhausted(): Promise<Usage | null> {
+  try {
+    const day = pacificDay();
+    const store = usageStore();
+    const data = ((await store.get(day.key, { type: "json" })) ?? {}) as DayRecord;
+    const next = { ...data, providerExhausted: true };
+    await store.setJSON(day.key, next);
+    return toUsage(next, day.resetsAt);
   } catch (err) {
     console.error("usage write failed", err);
     return null;
@@ -260,12 +291,20 @@ export default async function handler(request: Request, _context: Context) {
   const messages = cleanMessages(body?.messages);
   if (!messages) return json({ error: "bad_request", message: "Invalid conversation." }, 400);
 
+  const ukTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
   const before = await readUsage();
   if (before && before.used >= before.limit) {
-    const time = new Date(before.resetsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
     return json({
       error: "budget",
-      message: `Out of HP! Today's AI token budget is used up. It refills at ${time} (UK time).`,
+      message: `Out of HP! Today's AI token budget is used up. It refills at ${ukTime(before.resetsAt)} (UK time).`,
+      usage: before,
+    }, 429);
+  }
+  if (before && before.requests >= before.requestLimit) {
+    return json({
+      error: "requests",
+      message: `Out of requests! Today's AI request budget is used up. It refills at ${ukTime(before.resetsAt)} (UK time).`,
       usage: before,
     }, 429);
   }
@@ -303,6 +342,19 @@ export default async function handler(request: Request, _context: Context) {
     const detail = await upstream.text().catch(() => "");
     console.error("AI service error", upstream.status, detail);
     let message = friendlyError(upstream.status, s.model, s.providerName);
+    // Google names daily quotas e.g. "GenerateRequestsPerDayPerProjectPerModel-FreeTier".
+    if (upstream.status === 429 && /per\s?day/i.test(detail)) {
+      const usage = await markProviderExhausted();
+      const refill = usage ? ` It refills at ${ukTime(usage.resetsAt)} (UK time).` : "";
+      return json({
+        error: "requests",
+        message: `Out of requests! ${s.providerName}'s free daily request limit has been reached.${refill}`,
+        usage,
+      }, 429);
+    }
+    if (upstream.status === 429) {
+      message = `${s.providerName}'s per-minute limit was hit. Wait a minute and try again.`;
+    }
     if (upstream.status === 404) {
       const options = await suggestModels(s.baseUrl, s.apiKey!, s.model);
       message += options.length

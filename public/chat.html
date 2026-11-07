@@ -383,6 +383,27 @@
   @keyframes hpLow { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
   .hp.empty .hp-text strong { color: var(--red); }
 
+  /* requests-left counter, styled like an ammo/lives counter */
+  .req {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px 2px 6px;
+    border: 1px solid var(--req-border, var(--green-border));
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-dim);
+  }
+
+  .req[hidden] { display: none; }
+  .req-icon { color: var(--req-color, var(--green)); font-size: 13px; line-height: 1; text-shadow: 0 0 8px var(--req-glow, rgba(0,255,136,0.4)); }
+  .req strong { color: var(--req-color, var(--green)); font-weight: normal; }
+  .req.bump .req-icon { animation: reqBump 0.5s ease-out; }
+  @keyframes reqBump { 0% { transform: scale(1.6); } 100% { transform: none; } }
+  .req.mid { --req-color: var(--amber); --req-glow: rgba(255,183,0,0.4); --req-border: rgba(255,183,0,0.35); }
+  .req.low { --req-color: var(--red); --req-glow: rgba(255,68,102,0.5); --req-border: rgba(255,68,102,0.4); }
+  .req.low .req-icon { animation: hpLow 1s step-end infinite; }
+
   .composer-hint { margin-top: 8px; font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; display: flex; justify-content: space-between; gap: 1rem; }
 
   @media (max-width: 640px) {
@@ -434,6 +455,9 @@
         <span class="hp-label">HP</span>
         <div class="hp-bar"><div class="hp-fill" id="hpFill"></div><div class="hp-damage" id="hpDamage"></div></div>
         <span class="hp-text" id="hpText"></span>
+        <span class="req" id="req" hidden role="meter" aria-label="AI requests left today" aria-valuemin="0">
+          <span class="req-icon" aria-hidden="true">⚡</span><span id="reqText"></span>
+        </span>
       </div>
       <form id="chatForm">
         <label class="input-wrap" for="input">
@@ -598,6 +622,9 @@
   var hpDamage = document.getElementById('hpDamage');
   var hpText = document.getElementById('hpText');
   var lastPct = null;
+  var reqEl = document.getElementById('req');
+  var reqText = document.getElementById('reqText');
+  var lastReqLeft = null;
 
   function compact(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M';
@@ -631,6 +658,24 @@
       ? '<strong>0</strong> <span class="hp-long">TOKENS · </span>REFILLS ' + esc(refill)
       : '<strong>' + compact(left) + '</strong> / ' + compact(u.limit) + '<span class="hp-long"> TOKENS LEFT</span>';
     hpEl.title = left.toLocaleString() + ' of ' + u.limit.toLocaleString() + ' tokens left today' + (refill ? ' · refills at ' + refill : '');
+    if (typeof u.requestLimit === 'number' && u.requestLimit > 0) {
+      var reqLeft = Math.max(0, u.requestLimit - (u.requests || 0));
+      var reqPct = (reqLeft / u.requestLimit) * 100;
+      reqEl.hidden = false;
+      reqEl.classList.toggle('mid', reqPct <= 50 && reqPct > 20);
+      reqEl.classList.toggle('low', reqPct <= 20);
+      if (lastReqLeft !== null && reqLeft < lastReqLeft) {
+        reqEl.classList.remove('bump'); void reqEl.offsetWidth; reqEl.classList.add('bump');
+      }
+      lastReqLeft = reqLeft;
+      reqText.innerHTML = '<strong>' + reqLeft + '</strong><span class="hp-long">/' + u.requestLimit + '</span> REQ';
+      reqEl.title = reqLeft + ' of ' + u.requestLimit + ' requests (messages) left today' + (refill ? ' · refills at ' + refill : '');
+      reqEl.setAttribute('aria-valuemax', u.requestLimit);
+      reqEl.setAttribute('aria-valuenow', reqLeft);
+      reqEl.setAttribute('aria-valuetext', reqLeft + ' requests left');
+    } else {
+      reqEl.hidden = true;
+    }
     hpEl.setAttribute('aria-valuemax', u.limit);
     hpEl.setAttribute('aria-valuenow', left);
     hpEl.setAttribute('aria-valuetext', left.toLocaleString() + ' tokens left');
@@ -685,6 +730,7 @@
           var msg = d.message || ('Request failed (' + res.status + ').');
           if (d.usage) setUsage(d.usage);
           if (d.error === 'budget' && d.usage) msg = 'Out of HP! Today\'s AI token budget is used up. It refills at ' + resetTime(d.usage.resetsAt) + '.';
+          if (d.error === 'requests' && d.usage) msg = 'Out of requests! Today\'s AI request limit has been reached. It refills at ' + resetTime(d.usage.resetsAt) + '.';
           if (d.error === 'not_configured') msg = 'The AI isn\'t connected yet. The site owner needs to add an AI API key in Netlify — see the setup guide in the README.';
           if (res.status === 401 || res.redirected) msg = 'Your login has expired. Refresh the page and sign in again.';
           throw new Error(msg);

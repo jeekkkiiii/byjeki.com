@@ -53,6 +53,7 @@ The provider is detected automatically: a Google key (`AIza…` or `AQ.…`) or 
 | `AI_BASE_URL` | no | Optional. Only needed for other OpenAI-compatible providers (e.g. `https://openrouter.ai/api/v1`) |
 | `CHAT_SYSTEM_PROMPT` | no | Optional. Personality/instructions for the assistant |
 | `AI_DAILY_TOKENS` | no | Optional. Daily token budget shown in the HP bar above the chat input (default `500000`). The chat pauses when it runs out and refills at midnight Pacific time (08:00 UK) |
+| `AI_DAILY_REQUESTS` | no | Optional. Daily request (message) budget shown as the ⚡ counter next to the HP bar (default `250`). Set it to your model's *requests per day* from AI Studio → Rate limits. If Google reports its daily limit is reached, the counter drops to 0 until the reset |
 
 Token usage is stored in Netlify Blobs (built in, no setup needed; `@netlify/blobs` in `package.json` is installed by Netlify automatically).
 If a model name is wrong or retired, the chat error lists models that are available.
